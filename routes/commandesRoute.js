@@ -46,7 +46,7 @@ router.get("/commandes/:id_commande", async (req, res) => {
             `SELECT 
                 dc.id_produit, 
                 p.nom AS nom_produit, 
-                dc.quantite, 
+                dc.quantité, 
                 dc.prix_unitaire
              FROM details_commande dc
              JOIN produits p ON dc.id_produit = p.id_produit
@@ -68,32 +68,18 @@ router.get("/commandes/:id_commande", async (req, res) => {
 });
 
 // Créer une nouvelle commande
-// routes/commandesRoute.js
-
-// ... (début du fichier)
-
 router.post("/commandes", async (req, res) => {
     let connection;
-    let id_nouvelle_commande; // Déclaration AVANT le try
+    let id_nouvelle_commande;
     try {
         const { id_client, produits } = req.body;
-        const mode_paiement=req.body||"especes"
-        const adresse_livraison=req.body||"port_gentil"
         
-        // --- 1. Validation Initiale (améliorée) ---
         if (!id_client || !produits || !Array.isArray(produits) || produits.length === 0) {
             return res.status(400).json({ 
-                message: "Données de commande incomplètes ou invalides. 'id_client', 'mode_paiement', 'adresse_livraison' et 'produits' (tableau non vide) sont requis." 
+                message: "Données de commande incomplètes ou invalides. 'id_client' et 'produits' (tableau non vide) sont requis." 
             });
         }
         
-        const modesPaiementValides = ['Carte', 'especes', 'Mobile Money'];
-        if (!modesPaiementValides.includes(mode_paiement)) {
-            return res.status(400).json({ 
-                message: "Mode de paiement invalide. Les options sont : 'Carte', 'especes', 'Mobile Money'." 
-            });
-        }
-
         let montantTotalCommande = 0;
         connection = await pool.getConnection();
         await connection.beginTransaction();
@@ -111,30 +97,24 @@ router.post("/commandes", async (req, res) => {
                     "SELECT nom, prix, stock FROM produits WHERE id_produit = ? FOR UPDATE", 
                     [item.id_produit]
                 );
-
                 const produit = produitInfo[0];
-                // --- S'assurer que produit.stock est un nombre ---
-                const stockActuel = parseInt(produit.stock, 10); // Convertir en entier
+                if (!produit) {
+                    throw new Error(`Produit avec l'ID ${item.id_produit} non trouvé.`);
+                }
+                const stockActuel = parseInt(produit.stock, 10);
                 if (isNaN(stockActuel)) {
                     throw new Error(`Le stock du produit '${produit.nom}' (ID: ${item.id_produit}) est corrompu ou non numérique.`);
                 }
-
                 if (stockActuel < quantiteDemandee) {
-                    throw new Error(`Stock insuffisant pour le produit '${produit.nom}' (ID: ${item.id_produit}). Stock disponible: ${stockActuel}, demandée: ${quantiteDemandee}.`);
+                    throw new Error(`Stock insuffisant pour le produit '${produit.nom}' (ID: ${item.id_produit}). Stock disponible: ${stockActuel}, demandé: ${quantiteDemandee}.`);
                 }
-
-                // --- Calcul du nouveau stock (ici était le problème) ---
-                const nouveauStock = stockActuel - quantiteDemandee; // Maintenant, les deux sont garantis être des nombres
-
-                await connection.query( // Cette ligne est la 92 dans le message d'erreur
+                const nouveauStock = stockActuel - quantiteDemandee;
+                await connection.query(
                     "UPDATE produits SET stock = ? WHERE id_produit = ?",
                     [nouveauStock, item.id_produit]
                 );
-                
                 const prixUnitaire = parseFloat(produit.prix); 
-
                 montantTotalCommande += prixUnitaire * quantiteDemandee;
-
                 produitsPourDetails.push({
                     id_produit: item.id_produit,
                     quantité: quantiteDemandee, // Utiliser la quantité validée
@@ -143,10 +123,10 @@ router.post("/commandes", async (req, res) => {
             }
 
             const [resultatCommande] = await connection.query(
-                "INSERT INTO commandes (id_client, mode_paiement, montant, date_paiement, adresse_livraison, statut_commande, date_creation) VALUES (?, ?, ?, NOW(), ?, 'en_attente', NOW())",
-                [id_client, mode_paiement, montantTotalCommande, adresse_livraison]
+                "INSERT INTO commandes (id_client, montant, date_paiement, statut_commande, date_creation) VALUES (?, ?, NOW(), 'en_attente', NOW())",
+                [id_client, montantTotalCommande]
             );
-            id_nouvelle_commande = resultatCommande.insertId; // Affectation ici
+            id_nouvelle_commande = resultatCommande.insertId;
 
             // Insertion des détails de commande
             for (const detail of produitsPourDetails) {
@@ -184,14 +164,11 @@ router.post("/commandes", async (req, res) => {
             statusCode = 400;
             userMessage = erreur.message;
         } else if (erreur.message.includes("Le stock du produit") && erreur.message.includes("est corrompu")) {
-            statusCode = 500; // C'est une erreur interne de données
+            statusCode = 500;
             userMessage = "Problème avec les données de stock du produit.";
         } else if (erreur.sqlMessage && erreur.code === 'ER_NO_REFERENCED_ROW_2') {
             statusCode = 400;
             userMessage = "L'ID client fourni n'existe pas.";
-        } else if (erreur.message.includes("Mode de paiement invalide")) {
-            statusCode = 400;
-            userMessage = erreur.message;
         }
         
         res.status(statusCode).json({ message: userMessage, details: erreur.message });
@@ -223,6 +200,31 @@ router.put("/commandes/:id_commande", async (req, res) => {
             message: "Erreur serveur lors de la mise à jour du statut de la commande.", 
             details: erreur.message 
         });
+    }
+});
+
+// Mettre à jour le mode de paiement et l'adresse de livraison d'une commande
+router.put("/commandes/:id_commande/paiement", async (req, res) => {
+    try {
+        const { id_commande } = req.params;
+        const { mode_paiement, adresse_livraison } = req.body;
+
+        if (!mode_paiement || !adresse_livraison) {
+            return res.status(400).json({ message: "Mode de paiement et adresse de livraison requis." });
+        }
+
+        const [resultat] = await pool.query(
+            "UPDATE commandes SET mode_paiement = ?, adresse_livraison = ? WHERE id_commande = ?",
+            [mode_paiement, adresse_livraison, id_commande]
+        );
+
+        if (resultat.affectedRows === 0) {
+            return res.status(404).json({ message: "Commande non trouvée." });
+        }
+
+        res.status(200).json({ message: "Commande mise à jour avec succès." });
+    } catch (erreur) {
+        res.status(500).json({ message: "Erreur serveur.", details: erreur.message });
     }
 });
 
