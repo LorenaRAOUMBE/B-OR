@@ -77,7 +77,7 @@ router.post("/commandes", async (req, res) => {
     let id_nouvelle_commande; // Déclaration AVANT le try
     try {
         const { id_client, produits } = req.body;
-        const mode_paiement=req.body||"espece"
+        const mode_paiement=req.body||"especes"
         const adresse_livraison=req.body||"port_gentil"
         
         // --- 1. Validation Initiale (améliorée) ---
@@ -87,10 +87,10 @@ router.post("/commandes", async (req, res) => {
             });
         }
         
-        const modesPaiementValides = ['Carte', 'Espèces', 'Mobile Money'];
+        const modesPaiementValides = ['Carte', 'especes', 'Mobile Money'];
         if (!modesPaiementValides.includes(mode_paiement)) {
             return res.status(400).json({ 
-                message: "Mode de paiement invalide. Les options sont : 'Carte', 'PayPal', 'Espèces', 'Mobile Money'." 
+                message: "Mode de paiement invalide. Les options sont : 'Carte', 'especes', 'Mobile Money'." 
             });
         }
 
