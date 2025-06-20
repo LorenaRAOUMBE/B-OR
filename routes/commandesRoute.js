@@ -76,16 +76,18 @@ router.post("/commandes", async (req, res) => {
     let connection;
     let id_nouvelle_commande; // Déclaration AVANT le try
     try {
-        const { id_client, mode_paiement, adresse_livraison, produits } = req.body;
+        const { id_client, produits } = req.body;
+        const mode_paiement=req.body||"espece"
+        const adresse_livraison=req.body||"port_gentil"
         
         // --- 1. Validation Initiale (améliorée) ---
-        if (!id_client || !mode_paiement || !adresse_livraison || !produits || !Array.isArray(produits) || produits.length === 0) {
+        if (!id_client || !produits || !Array.isArray(produits) || produits.length === 0) {
             return res.status(400).json({ 
                 message: "Données de commande incomplètes ou invalides. 'id_client', 'mode_paiement', 'adresse_livraison' et 'produits' (tableau non vide) sont requis." 
             });
         }
         
-        const modesPaiementValides = ['Carte', 'PayPal', 'Espèces', 'Mobile Money'];
+        const modesPaiementValides = ['Carte', 'Espèces', 'Mobile Money'];
         if (!modesPaiementValides.includes(mode_paiement)) {
             return res.status(400).json({ 
                 message: "Mode de paiement invalide. Les options sont : 'Carte', 'PayPal', 'Espèces', 'Mobile Money'." 

@@ -11,7 +11,8 @@ const clientsRoute = require("./routes/clientsRoute");
 const administrateurRoute=require("./routes/administrateurRoute");
 const produitsRoute=require("./routes/produitsRoute");
 const commandesRoute=require('./routes/commandesRoute');
-const authRoute=require("./routes/authenRoute")
+const authRoute=require("./routes/authenRoute");
+const pvitRouter = require('./pvitService/pvitservice');
 
 // Initialisation de l'application Express
 const app = express();
@@ -34,6 +35,7 @@ app.use(administrateurRoute);
 app.use(produitsRoute);
 app.use(commandesRoute);
 app.use(authRoute);
+app.use("/", pvitRouter); 
 
 const Port= process.env.PORT
 
